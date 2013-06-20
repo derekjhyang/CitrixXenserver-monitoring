@@ -2,48 +2,222 @@
 import sys
 import time
 import XenAPI
-from XenAPI import xapi_local as XMLRPCProxy
+#from XenAPI import xapi_local as XMLRPCProxy
 from parse_rrd import RRDUpdates
+from xml import sax
+
+
+""" Here we use SAX to parse XML metric data """
+class RRDContentHandler(sax.ContentHandler):
+    """
+       Xenserver performance metric data is in the format:
+    <xport>
+      <meta>
+       <start>INTEGER</start>
+       <step>INTEGER</step>
+       <end>INTEGER</end>
+       <rows>INTEGER</rows>
+       <columns>INTEGER</columns>
+       <legend>
+        <entry>IGNOREME:(host|vm):UUID:PARAMNAME</entry>
+        ... another COLUMNS-1 entries ...
+       </legend>
+      </meta>
+      <data>
+       <row>
+        <t>INTEGER(END_TIME)</t>  # end time
+        <v>FLOAT</v>              # value
+        ... another COLUMNS-1 values ...
+       </row>
+       ... another ROWS-2 rows
+       <row>
+        <t>INTEGER(START_TIME)</t>
+        <v>FLOAT</v>
+        ... another COLUMNS-1 values ...
+       </row>
+      </data>
+    </xport>
+    """
+
+    def __init__(self, report):
+        "report is saved and later updated by this object. report should contain defaults already"
+        self.report = report
+        self.in_start_tag = False
+        self.in_step_tag = False
+        self.in_end_tag = False
+        self.in_rows_tag = False
+        self.in_columns_tag = False
+        self.in_entry_tag = False
+        self.in_row_tag = False
+        self.column_details = []
+        self.row = 0
+
+
+    def startElement(self, name, attrs):
+        self.raw_text = ""
+        if name == 'start':
+            self.in_start_tag = True
+        elif name == 'step':
+            self.in_step_tag = True
+        elif name == 'end':
+            self.in_end_tag = True
+        elif name == 'rows':
+            self.in_rows_tag = True
+        elif name == 'columns':
+            self.in_columns_tag = True
+        elif name == 'entry':
+            self.in_entry_tag = True
+        elif name == 'row':
+            self.in_row_tag = True
+            self.col = 0
+        if self.in_row_tag:
+            if name == 't':
+                self.in_t_tag = True
+            elif name == 'v':
+                self.in_v_tag = True
+
+
+    def endElement(self, name):
+        if name == 'start':
+            # This overwritten later if there are any rows
+            self.report.start_time = int(self.raw_text)
+            self.in_start_tag = False
+        elif name == 'step':
+            self.report.step_time = int(self.raw_text)
+            self.in_step_tag = False
+        elif name == 'end':
+            # This overwritten later if there are any rows
+            self.report.end_time = int(self.raw_text)
+            self.in_end_tag = False
+        elif name == 'rows':
+            self.report.rows = int(self.raw_text)
+            self.in_rows_tag = False
+        elif name == 'columns':
+            self.report.columns = int(self.raw_text)
+            self.in_columns_tag = False
+        elif name == 'entry':
+            (_, objtype, uuid, paramname) = self.raw_text.split(':')
+            # lookup the obj_report corresponding to this uuid, or create if it does not exist
+            if not self.report.obj_reports.has_key(uuid):
+                self.report.obj_reports[uuid] = ObjectReport(objtype, uuid)
+            obj_report = self.report.obj_reports[uuid]
+            # save the details of this column
+            self.column_details.append(RRDColumn(paramname, obj_report))
+            self.in_entry_tag = False
+        elif name == 'row':
+            self.in_row_tag = False
+            self.row += 1
+        elif name == 't':
+            # Extract start and end time from row data as it's more reliable than the values in the meta data
+            t = int(self.raw_text)
+            # Last row corresponds to start time
+            self.report.start_time = t
+            if self.row == 0:
+                # First row corresponds to end time
+                self.report.end_time = t
+            self.in_t_tag = False
+        elif name == 'v':
+            v = float(self.raw_text)
+            # Find object report and paramname for this col
+            col_details = self.column_details[self.col]
+            obj_report = col_details.obj_report
+            paramname = col_details.paramname
+            # Update object_report
+            obj_report.insert_value(paramname, index=0, value=v) # use index=0 as this is the earliest sample so far
+            # Update position in row
+            self.col += 1
+            self.in_t_tag = False
+
 
 class Monitor(object):
-
     def __init__(self, url, user, password):
-        self.params = {}
         self.url = url
-        self.client_proxy = XMLRPCProxy() # XML-RPC client
-        self.xapi_local = XenAPI.xapi_local()
-
-        try:
-            self.client_proxy.login_with_password(user, password)
-            self.xapi = self.client_proxy.xenapi
-            self.rrd_updates = RRDUpdates()
-            self.params['cf'] = 'AVERAGE' # consolidation function
-            self.params['start'] = int(time.time()) # monitor start time
-            self.params['interval'] = 5 # monitor time-interval
-            self.params['host'] = 'false'
-
-            self.rrd_updates.refresh(self.xapi_local.handle, self.params, self.url) 
+        self.session = XenAPI.Session(url)
+        self.session.xenapi.login_with_password(user,password)
+        self.xapi = self.session.xenapi
+        self.params = {}
+        self.params['cf'] = 'AVERAGE' # consolidation function
+        self.params['start'] = int(time.time()) - 300
+        self.params['interval'] = '10' # step
+        self.params['end'] = self.params['start'] + 500
+        self.rrd_updates = RRDUpdates()
         
-        finally:
-            self.client_proxy.logout()
 
-    def get_latest_xenserver_data(self,**kwargs):
-        host_uuid = self.rrd_updates.get_host_uuid()
+
+class VMMonitor(Monitor):
+    def __init__(self, url, user, password, uuid):
+        #print url, user, password, uuid
+        super(VMMonitor, self).__init__(url, user, password)
+        #self.params['vm_uuid'] = uuid 
+        self.vm_uuid = uuid 
+        self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
+
  
+    def get_vm_data(self, key=None): 
+        vm = {}
+        vm['start_timestamp'] = self.params['start']
+        vm['end_timestamp'] = self.params['end']
+        vm['start_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['start']))
+        vm['end_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['end']))
+        vm['period'] = self.params['end'] - self.params['start']
+    
+        for param in self.rrd_updates.get_vm_param_list(self.vm_uuid, key):
+            if param != "":
+                """ here we gather the last time-point data"""
+                max_time = 0
+                data = ""
+                #print "number of rows: %s" % self.rrd_updates.get_nrows()
+                for row in range(self.rrd_updates.get_nrows()):
+                    epoch = self.rrd_updates.get_row_time(row)
+                    data_val = str(self.rrd_updates.get_vm_data(self.vm_uuid, param, row))
+                    #print "time: %s, data_val: %s" % (time.localtime(epoch),data_val)
+                    if epoch > max_time:
+                        max_time = epoch
+                        data = data_val
+                max_stdtime = time.strftime("%H:%M:%S", time.localtime(max_time)) 
+                #print "%s  (%s, %s)" % (param, stdtime, data)
+                vm['max_timestamp'] = max_time
+                vm['max_time'] = max_stdtime
+                vm[param] = data
+        return vm
+
+
     def get_cpu(self):
-        pass    
-  
+        cpustat = {}
+        cpu_params = self.rrd_updates.get_vm_param_dict(self.vm_uuid,'cpu') 
+        cpustat['cpu_num'] = len(cpu_params)
+        val = 0
+        for row in range(self.rrd_updates.get_nrows()):
+            for c in cpu_params:
+                val += self.rrd_updates.get_vm_data(self.vm_uuid, c, row)
+                #print "param: %s, val: %s" % (c, val)     
+        cpustat['cpu_utilization'] = float(val*100/len(cpu_params))
+        return cpustat
+
+
     def get_memory(self):
-        memstat = []
-   
+        memstat = {}
+        mem_data_dict = self.get_vm_data('memory')
+        #print mem_data_dict
+        memstat['free_memory'] = float(mem_data_dict['memory_internal_free'])
+        memstat['total_memory'] = float(mem_data_dict['memory']) 
+        if mem_data_dict['memory'] and mem_data_dict['memory_internal_free']:
+            memstat['used_memory'] = float(mem_data_dict['memory']) - float(mem_data_dict['memory_internal_free'])
+            memstat['memory_utilization'] = float(memstat['used_memory']*100/float(mem_data_dict['memory']))
+        return memstat
+
+ 
     def get_network(self):
+        netstat = []
+
+
+    def get_disk(self):
         pass
 
-    def get_io(self):
-        pass
+
 
 if __name__ == "__main__":
-    url = sys.argv[1]
-    user = sys.argv[2]
-    password = sys.argv[3]
-    mon = Monitor(url, user, password)
+    mon = VMMonitor(*sys.argv[1:])
+    print mon.get_vm_data()
+    print mon.get_cpu()
+    print mon.get_memory()

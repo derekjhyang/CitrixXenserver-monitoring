@@ -5,8 +5,9 @@
 # Contact: Jon Ludlam (jonathan.ludlam@eu.citrix.com)
 #
 # Mostly this script is taken from perfmon, by Alex Zeffert
+#  
+# the last modified by Winnie Yang
 #
-
 import XenAPI
 import urllib
 from xml.dom import minidom
@@ -36,22 +37,39 @@ class RRDUpdates:
         self.params['cf'] = 'AVERAGE'  # consolidation function, each sample averages 12 from the 5 second RRD
         self.params['interval'] = '60'
 
+
     def get_nrows(self):
+        """number of rows"""
         return self.rows
+
 
     def get_vm_list(self):
         return self.vm_reports.keys()
 
-    def get_vm_param_list(self, uuid):
+
+    def get_vm_param_list(self, uuid, key=None):
+        """ return vm params via 'List' """
         report = self.vm_reports[uuid]
         if not report:
             return []
-        return report.keys()
+        if key is not None:
+            return [k for k in report.keys() if k.startswith(key)]
+        else:
+            return report.keys()
 
+
+    def get_vm_param_dict(self, uuid, key):
+        report = self.vm_reports[uuid]
+        if not report:
+            report = {}
+        return  dict((k,v) for k,v in report.iteritems() if k.startswith(key))
+
+ 
     def get_vm_data(self, uuid, param, row):
         report = self.vm_reports[uuid]
         col = report[param]
         return self.__lookup_data(col, row)
+
 
     def get_host_uuid(self):
         report = self.host_report
@@ -59,19 +77,23 @@ class RRDUpdates:
             return None
         return report.uuid
 
+
     def get_host_param_list(self):
         report = self.host_report
         if not report:
             return []
         return report.keys()
 
+
     def get_host_data(self, param, row):
         report = self.host_report
         col = report[param]
         return self.__lookup_data(col, row)
 
+
     def get_row_time(self,row):
         return self.__lookup_timestamp(row)
+
 
     # extract float from value (<v>) node by col,row
     def __lookup_data(self, col, row):
@@ -80,6 +102,7 @@ class RRDUpdates:
         node = self.data_node.childNodes[self.rows - 1 - row].childNodes[col+1]
         return float(node.firstChild.toxml()) # node.firstChild should have nodeType TEXT_NODE
 
+
     # extract int from value (<t>) node by row
     def __lookup_timestamp(self, row):
         # Note: the <rows> nodes are in reverse chronological order, and comprise
@@ -87,10 +110,13 @@ class RRDUpdates:
         node = self.data_node.childNodes[self.rows - 1 - row].childNodes[0]
         return int(node.firstChild.toxml()) # node.firstChild should have nodeType TEXT_NODE
 
-    def refresh(self, session, override_params = {}, server = 'http://localhost'):
+
+    def refresh(self, session, override_params = {}, server='http://localhost'):
         params = dict(self.params)
         params.update(override_params)
         params['session_id'] = session
+        #if params['vm_uuid']:
+        #    del params['host']
         paramstr = "&".join(["%s=%s"  % (k,params[k]) for k in params])
         url = "%s/rrd_updates?%s" % (server, paramstr)
 
@@ -105,10 +131,10 @@ class RRDUpdates:
         # Update the time used on the next run
         self.params['start'] = self.end_time + 1 # avoid retrieving same data twice
 
-    def __parse_xmldoc(self, xmldoc):
 
-        # The 1st node contains meta data (description of the data)
-        # The 2nd node contains the data
+    def __parse_xmldoc(self, xmldoc):
+        # The 1st node contains 'meta data' (description of the data)
+        # The 2nd node contains the 'data'
         self.meta_node = xmldoc.firstChild.childNodes[0]
         self.data_node = xmldoc.firstChild.childNodes[1]
 
@@ -127,16 +153,15 @@ class RRDUpdates:
 
         # the <legend> Node describes the variables
         self.legend = self.meta_node.getElementsByTagName('legend')[0]
-
         # vm_reports matches uuid to per VM report
         self.vm_reports = {}
-
         # There is just one host_report and its uuid should not change!
         self.host_report = None
 
         # Handle each column.  (I.e. each variable)
         for col in range(self.columns):
             self.__handle_col(col)
+
 
     def __handle_col(self, col):
         # work out how to interpret col from the legend
@@ -150,7 +175,7 @@ class RRDUpdates:
             if not self.vm_reports.has_key(uuid):
                 self.vm_reports[uuid] = VMReport(uuid)
 
-            # Update the VMReport with the col data and meta data
+            # Update the VMReport with the 'col data' and 'meta data'
             vm_report = self.vm_reports[uuid]
             vm_report[param] = col
 
@@ -166,5 +191,3 @@ class RRDUpdates:
 
         else:
             raise PerfMonException, "Invalid string in <legend>: %s" % col_meta_data
-
-
