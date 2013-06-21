@@ -137,7 +137,7 @@ class Monitor(object):
         self.xapi = self.session.xenapi
         self.params = {}
         self.params['cf'] = 'AVERAGE' # consolidation function
-        self.params['start'] = int(time.time()) - 300
+        self.params['start'] = int(time.time()) - 500
         self.params['interval'] = '10' # step
         self.params['end'] = self.params['start'] + 500
         self.rrd_updates = RRDUpdates()
@@ -146,21 +146,14 @@ class Monitor(object):
 
 class VMMonitor(Monitor):
     def __init__(self, url, user, password, uuid):
-        #print url, user, password, uuid
         super(VMMonitor, self).__init__(url, user, password)
         #self.params['vm_uuid'] = uuid 
         self.vm_uuid = uuid 
         self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
 
  
-    def get_vm_data(self, key=None): 
-        vm = {}
-        vm['start_timestamp'] = self.params['start']
-        vm['end_timestamp'] = self.params['end']
-        vm['start_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['start']))
-        vm['end_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['end']))
-        vm['period'] = self.params['end'] - self.params['start']
-    
+    def get_vm_data(self, key=None, use_time_meta=False): 
+        vm = {}       
         for param in self.rrd_updates.get_vm_param_list(self.vm_uuid, key):
             if param != "":
                 """ here we gather the last time-point data"""
@@ -174,50 +167,80 @@ class VMMonitor(Monitor):
                     if epoch > max_time:
                         max_time = epoch
                         data = data_val
-                max_stdtime = time.strftime("%H:%M:%S", time.localtime(max_time)) 
-                #print "%s  (%s, %s)" % (param, stdtime, data)
-                vm['max_timestamp'] = max_time
-                vm['max_time'] = max_stdtime
+                if use_time_meta:
+                    vm['max_timestamp'] = max_time
+                    vm['max_time'] = time.strftime("%H:%M:%S", time.localtime(max_time))
                 vm[param] = data
+        
+        if use_time_meta:
+            vm['start_timestamp'] = self.params['start']
+            vm['end_timestamp'] = self.params['end']
+            vm['start_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['start']))
+            vm['end_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['end']))
+            vm['period'] = self.params['end'] - self.params['start']
+
         return vm
 
 
     def get_cpu(self):
         cpustat = {}
-        cpu_params = self.rrd_updates.get_vm_param_dict(self.vm_uuid,'cpu') 
-        cpustat['cpu_num'] = len(cpu_params)
-        val = 0
+        #cpu_params = self.rrd_updates.get_vm_param_dict(self.vm_uuid,'cpu') 
+        cpu_param_dict = self.get_vm_data('cpu')
+        cpustat['cpu_num'] = len(cpu_param_dict)
+        val = 0.0
         for row in range(self.rrd_updates.get_nrows()):
-            for c in cpu_params:
+            for c in cpu_param_dict:
                 val += self.rrd_updates.get_vm_data(self.vm_uuid, c, row)
-                #print "param: %s, val: %s" % (c, val)     
-        cpustat['cpu_utilization'] = float(val*100/len(cpu_params))
+                print "param: %s, val: %s" % (c, val) 
+        print val    
+        cpustat['cpu_utilization'] = val*10/cpustat['cpu_num']
         return cpustat
 
 
     def get_memory(self):
         memstat = {}
         mem_data_dict = self.get_vm_data('memory')
-        #print mem_data_dict
-        memstat['free_memory'] = float(mem_data_dict['memory_internal_free'])
+        print mem_data_dict
         memstat['total_memory'] = float(mem_data_dict['memory']) 
-        if mem_data_dict['memory'] and mem_data_dict['memory_internal_free']:
-            memstat['used_memory'] = float(mem_data_dict['memory']) - float(mem_data_dict['memory_internal_free'])
-            memstat['memory_utilization'] = float(memstat['used_memory']*100/float(mem_data_dict['memory']))
+        if mem_data_dict.has_key('memory_internal_free'):
+            memstat['free_memory'] = float(mem_data_dict['memory_internal_free'])
+            memstat['used_memory'] = float(mem_data_dict['memory_target']) - float(mem_data_dict['memory_internal_free'])
+            memstat['memory_utilization'] = float(memstat['used_memory']*100/float(mem_data_dict['memory_target']))
         return memstat
 
  
     def get_network(self):
-        netstat = []
+        netstat = {}
+        net_data_dict = self.get_vm_data('vif',True)
+        #print net_data_dict
+        import re
+        rx_re_pattern = re.compile('vif_[0-9]_rx')
+        tx_re_pattern = re.compile('vif_[0-9]_tx')
+        rx_total = 0
+        tx_total = 0
+        for k,v in net_data_dict.iteritems():
+            if rx_re_pattern.match(k):
+                rx_total += float(v)
+            elif tx_re_pattern.match(k):
+                tx_total += float(v)
+        
+        print rx_total, tx_total
+        
+        return netstat
 
 
     def get_disk(self):
-        pass
+        diskstat = {}
+        disk_data_dict = self.get_vm_data('vbd')
+        print disk_data_dict
+        return diskstat
 
 
 
 if __name__ == "__main__":
     mon = VMMonitor(*sys.argv[1:])
-    print mon.get_vm_data()
+    print mon.get_vm_data(use_time_meta=True)
     print mon.get_cpu()
     print mon.get_memory()
+    print mon.get_network()
+    #mon.get_disk()
