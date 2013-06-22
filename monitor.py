@@ -3,7 +3,7 @@ from __future__ import division
 import sys
 import time
 import XenAPI
-import numpy
+#import numpy
 import platform
 #from XenAPI import xapi_local as XMLRPCProxy
 from parse_rrd import RRDUpdates
@@ -139,10 +139,17 @@ class RRDContentHandler(sax.ContentHandler):
 
 class Monitor(object):
     def __init__(self, url, user, password, period=300, step=1):
-        self.url = url
-        self.session = XenAPI.Session(url)
-        self.session.xenapi.login_with_password(user,password)
+        self.url = "https://"+url+":443"
+        ### http login ###
+        #self.session = XenAPI.Session(url)
+        #self.session.xenapi.login_with_password(user,password)
+        #self.xapi = self.session.xenapi
+
+        ### local client proxy login ###
+        self.session = XenAPI.xapi_local()
+        self.session.login_with_password(user, password)     
         self.xapi = self.session.xenapi
+        
         self.params = {}
         self.params['cf'] = 'AVERAGE' # consolidation function
         self.params['start'] = int(time.time()) - period
@@ -408,8 +415,8 @@ def sys_load(dataList):
         here we use 'standard deviation' to determine whether the system load is balanced,
         where the sys_load value is small better.
     """
-    return numpy.std(dataList)
-
+    #return numpy.std(dataList)
+    pass
 
 def exp_smoothing(dataList):
     """
@@ -420,7 +427,10 @@ def exp_smoothing(dataList):
 
 
 if __name__ == "__main__":
-    hostmon = HostMonitor(*sys.argv[1:])
+    url = sys.argv[1]
+    user = sys.argv[2]
+    password = sys.argv[3]
+    hostmon = HostMonitor(url, user, password)
     for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
         vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
         label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
