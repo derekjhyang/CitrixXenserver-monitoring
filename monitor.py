@@ -202,12 +202,12 @@ class VMMonitor(Monitor):
         cpu_param_dict = self.get_vm_data('cpu')
         cpustat['cpu_num'] = len(cpu_param_dict)
         val = 0.0
-        nrows = self.rrd_updates.get_nrows()
+        nrows = self.rrd_updates.get_nrows() # row amount
         #print "number of rows: %s" % nrows
         for row in range(nrows):
-            for c in cpu_param_dict:
-                val += self.rrd_updates.get_vm_data(self.vm_uuid, c, row)
-                print "param: %s, val: %s" % (c, val) 
+            for col in cpu_param_dict:
+                val += self.rrd_updates.get_vm_data(self.vm_uuid, col, row)
+                #print "param: %s, val: %s" % (col, val) 
         #print val    
         cpustat['cpu_utilization'] = val/(cpustat['cpu_num']*nrows)
         return cpustat
@@ -216,11 +216,12 @@ class VMMonitor(Monitor):
     def get_memory(self):
         """ unit: bytes """
         memstat = {}
-        mem_data_dict = self.get_vm_data('memory')
-        #print mem_data_dict
+        mem_param_dict = self.get_vm_data('memory')
+        #print mem_param_dict
         
-        ## 0 <= memory_static_min <= memory_dynamic_min <= memory_dynamic_max <= memory_static_max ##
-        
+        """
+             0 <= memory_static_min <= memory_dynamic_min <= memory_dynamic_max <= memory_static_max
+        """
         vm_ref = self.xapi.VM.get_by_uuid(self.vm_uuid)
         # static part
         memstat['memory_static_min'] = int(self.xapi.VM.get_record(vm_ref).get('memory_static_min'))
@@ -228,43 +229,57 @@ class VMMonitor(Monitor):
         # dynamic part
         memstat['memory_dynamic_min'] = int(self.xapi.VM.get_record(vm_ref).get('memory_dynamic_min'))
         memstat['memory_dynamic_max'] = int(self.xapi.VM.get_record(vm_ref).get('memory_dynamic_max'))
-        
-        
-        memstat['total_memory'] = float(mem_data_dict['memory'])
-        if mem_data_dict.has_key('memory_internal_free'):
-            memstat['free_memory'] = float(mem_data_dict['memory_internal_free'])*1024
+                
+        memstat['total_memory'] = float(mem_param_dict['memory'])
+        if mem_param_dict.has_key('memory_internal_free'):
+            memstat['free_memory'] = float(mem_param_dict['memory_internal_free'])*1024
             memstat['used_memory'] = memstat['total_memory'] - memstat['free_memory'] 
             memstat['memory_utilization'] = memstat['used_memory']/memstat['total_memory']
         
+
         return memstat
 
  
     def get_network(self):
         netstat = {}
-        net_data_dict = self.get_vm_data('vif',True)
-        #print net_data_dict
+        net_param_dict = self.get_vm_data('vif',True)
+        #print net_param_dict
         import re
         rx_re_pattern = re.compile('vif_[0-9]_rx')
         tx_re_pattern = re.compile('vif_[0-9]_tx')
         rx_total = 0
         tx_total = 0
-        for k,v in net_data_dict.iteritems():
+        for k,v in net_param_dict.iteritems():
             if rx_re_pattern.match(k):
                 rx_total += float(v)
             elif tx_re_pattern.match(k):
                 tx_total += float(v)
+            else:
+                pass
         #print rx_total, tx_total
         netstat['rx_total'] = rx_total
-        netstat['rx_rate'] = (netstat['rx_total']*8)/self.mon_period # unit: bit per second
+        netstat['avg_rx_rate'] = netstat['rx_total']/self.mon_period # avg rx rate (bytes/sec)
         netstat['tx_total'] = tx_total
-        netstat['tx_rate'] = (netstat['tx_total']*8)/self.mon_period # unit: bit per second
+        netstat['avg_tx_rate'] = netstat['tx_total']/self.mon_period # avg tx rate (bytes/sec)
         return netstat
 
 
     def get_disk(self):
         diskstat = {}
-        disk_data_dict = self.get_vm_data('vbd')
-        print disk_data_dict
+        disk_param_dict = self.get_vm_data('vbd')
+        #print disk_param_dict
+        import re
+        read_pattern = re.compile('vbd_(.)+_read')
+        write_pattern = re.compile('vbd_(.)+_write')
+        disk_read_total_bytes = 0
+        disk_write_total_bytes = 0
+        for k,v in disk_param_dict.iteritems():
+            if re.match(read_pattern, k):
+                pass
+            elif re.match(write_pattern, k):
+                pass
+            else: 
+                pass
         return diskstat
 
 
@@ -276,27 +291,40 @@ class HostMonitor(Monitor):
 
 
     def get_cpu(self):
-        pass
+        cpustat = {}
+
 
     def get_memory(self):
-        pass
+        memstat = {}       
+
 
     def get_network(self):
-        pass
+        netstat = {}
+
 
     def get_disk(self):
-        pass
+        diskstat = {}
 
 
-def toMB(size):
+
+
+def BtyetoMB(size):
+    """ bytes converts to Mbytes, here we use left shift to determine it. """
     return size/(2<<19)
 
 
 def sys_load(dataList):
+    """ 
+        here we use 'standard deviation' to determine whether the system load is balanced,
+        where the sys_load value is small better.
+    """
     return numpy.std(dataList)
 
 
 def exp_smoothing(dataList):
+    """
+        here we use 'exponential smoothing' to predict the next time period data value
+    """
     pass
 
 
@@ -307,4 +335,4 @@ if __name__ == "__main__":
     print mon.get_cpu()
     print mon.get_memory()
     print mon.get_network()
-    #mon.get_disk()
+    mon.get_disk()
