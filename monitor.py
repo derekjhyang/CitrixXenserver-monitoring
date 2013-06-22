@@ -420,11 +420,7 @@ def exp_smoothing(dataList):
 
 
 if __name__ == "__main__":
-    url = sys.argv[1]
-    user = sys.argv[2]
-    password = sys.argv[3]
-
-    hostmon = HostMonitor(url, user, password, "SAMEVEDStack")
+    hostmon = HostMonitor(*sys.argv[1:])
     for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
         vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
         label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
