@@ -4,6 +4,7 @@ import sys
 import time
 import XenAPI
 import numpy
+import platform
 #from XenAPI import xapi_local as XMLRPCProxy
 from parse_rrd import RRDUpdates
 from xml import sax
@@ -292,21 +293,25 @@ class VMMonitor(Monitor):
 
 class HostMonitor(Monitor):
 
-    def __init__(self, url, user, password):
+    def __init__(self, url, user, password, hostname=None):
         super(HostMonitor,self).__init__(url, user, password)
         self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
         self.cpu_state = {}
         self.mem_state = {}
         self.net_state = {}
         self.disk_state = {}
-
+        if hostname is None:
+            self.hostname = platform.node()
+        else:
+            self.hostname = hostname
      
-    def get_all_vm_opaque_ref(self):
-        return self.xapi.VM.get_all()
 
-    
-    def get_vm_uuid_by_ref(self,ref):
-        return self.xapi.VM.get_record(ref).get('uuid')
+    def get_allAvailHostingVMOpaqueRef(self):
+        host_opaque_ref = "".join(self.xapi.host.get_by_name_label(self.hostname))
+        if host_opaque_ref == "":
+            return []
+        else:
+            return self.xapi.host.get_record(host_opaque_ref).get('resident_VMs')
 
 
     def get_host_data(self, key=None):
@@ -418,19 +423,16 @@ if __name__ == "__main__":
     url = sys.argv[1]
     user = sys.argv[2]
     password = sys.argv[3]
-    #vm_uuid = sys.argv[4] 
 
-
-    #vmmon = VMMonitor(url, user, password, vm_uuid)
-    hostmon = HostMonitor(url, user, password)
-
-    for vm_opaque_ref in hostmon.get_all_vm_opaque_ref():
-        vm_uuid = hostmon.get_vm_uuid_by_ref(vm_opaque_ref)
-        print vm_uuid
-        #vmmon = VMMonitor(url, user, password, vm_uuid)
-        #print vmmon.get_vm_data(use_time_meta=True)
-    #print vmmon.get_cpu()
-    #print vmmon.get_memory()
-    #print vmmon.get_network()
-    #print vmmon.get_disk()
+    hostmon = HostMonitor(url, user, password, "SAMEVEDStack")
+    for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+        vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+        label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+        print vm_uuid, label
+        vmmon = VMMonitor(url, user, password, vm_uuid)
+        print vmmon.get_vm_data(use_time_meta=True)
+        print vmmon.get_cpu()
+        print vmmon.get_memory()
+        print vmmon.get_network()
+        print vmmon.get_disk()
 
