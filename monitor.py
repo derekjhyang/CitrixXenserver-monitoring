@@ -9,6 +9,10 @@ from parse_rrd import RRDUpdates
 from xml import sax
 
 
+class ParamMatchError(Exception): pass
+
+
+
 """ Here we use SAX to parse XML metric data (Current not in use)"""
 class RRDContentHandler(sax.ContentHandler):
     """
@@ -163,7 +167,6 @@ class Monitor(object):
 class VMMonitor(Monitor):
     def __init__(self, url, user, password, uuid):
         super(VMMonitor, self).__init__(url, user, password)
-        #self.params['vm_uuid'] = uuid 
         self.vm_uuid = uuid 
         self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
 
@@ -173,7 +176,7 @@ class VMMonitor(Monitor):
         for param in self.rrd_updates.get_vm_param_list(self.vm_uuid, key):
             if param != "":
                 """ here we gather the last time-point data"""
-                max_time = 0
+                max_time = 0.0
                 data = ""
                 #print "number of rows: %s" % self.rrd_updates.get_nrows()
                 for row in range(self.rrd_updates.get_nrows()):
@@ -200,16 +203,16 @@ class VMMonitor(Monitor):
         cpustat = {}
         #cpu_params = self.rrd_updates.get_vm_param_dict(self.vm_uuid,'cpu') 
         cpu_param_dict = self.get_vm_data('cpu')
-        cpustat['cpu_num'] = len(cpu_param_dict)
+        cpustat['vcpu_num'] = len(cpu_param_dict)
         val = 0.0
         nrows = self.rrd_updates.get_nrows() # row amount
         #print "number of rows: %s" % nrows
         for row in range(nrows):
-            for col in cpu_param_dict:
-                val += self.rrd_updates.get_vm_data(self.vm_uuid, col, row)
-                #print "param: %s, val: %s" % (col, val) 
+            for param in cpu_param_dict:
+                val += self.rrd_updates.get_vm_data(self.vm_uuid, param, row)
+                #print "param: %s, val: %s" % (param, val) 
         #print val    
-        cpustat['cpu_utilization'] = val/(cpustat['cpu_num']*nrows)
+        cpustat['vcpu_utilization'] = val/(cpustat['vcpu_num']*nrows)
         return cpustat
 
 
@@ -235,14 +238,12 @@ class VMMonitor(Monitor):
             memstat['free_memory'] = float(mem_param_dict['memory_internal_free'])*1024
             memstat['used_memory'] = memstat['total_memory'] - memstat['free_memory'] 
             memstat['memory_utilization'] = memstat['used_memory']/memstat['total_memory']
-        
-
         return memstat
 
  
     def get_network(self):
         netstat = {}
-        net_param_dict = self.get_vm_data('vif',True)
+        net_param_dict = self.get_vm_data('vif')
         #print net_param_dict
         import re
         rx_re_pattern = re.compile('vif_[0-9]_rx')
@@ -254,13 +255,13 @@ class VMMonitor(Monitor):
                 rx_total += float(v)
             elif tx_re_pattern.match(k):
                 tx_total += float(v)
-            else:
-                pass
+            #else:
+            #    raise ParamMatchError("Param Match Error: "+k)
         #print rx_total, tx_total
-        netstat['rx_total'] = rx_total
-        netstat['avg_rx_rate'] = netstat['rx_total']/self.mon_period # avg rx rate (bytes/sec)
-        netstat['tx_total'] = tx_total
-        netstat['avg_tx_rate'] = netstat['tx_total']/self.mon_period # avg tx rate (bytes/sec)
+        netstat['vif_rx_total'] = rx_total
+        netstat['vif_tx_total'] = tx_total
+        netstat['avg_vif_rx_rate'] = netstat['vif_rx_total']/self.mon_period # avg rx rate (bytes/sec)
+        netstat['avg_vif_tx_rate'] = netstat['vif_tx_total']/self.mon_period # avg tx rate (bytes/sec)
         return netstat
 
 
@@ -271,15 +272,20 @@ class VMMonitor(Monitor):
         import re
         read_pattern = re.compile('vbd_(.)+_read')
         write_pattern = re.compile('vbd_(.)+_write')
-        disk_read_total_bytes = 0
-        disk_write_total_bytes = 0
+        disk_read_total_bytes = 0.0
+        disk_write_total_bytes = 0.0
         for k,v in disk_param_dict.iteritems():
             if re.match(read_pattern, k):
-                pass
+                disk_read_total_bytes += float(v)
             elif re.match(write_pattern, k):
-                pass
-            else: 
-                pass
+                disk_write_total_bytes += float(v)
+            #else: 
+            #    raise ParamMatchError("Param Match Error: "+k)
+        #print disk_read_total_bytes, disk_write_total_bytes
+        diskstat['vbd_read_total'] = disk_read_total_bytes
+        diskstat['vbd_write_total'] = disk_write_total_bytes
+        diskstat['avg_vbd_read_rate'] = diskstat['vbd_read_total']/self.mon_period
+        diskstat['avg_vbd_write_rate'] = diskstat['vbd_write_total']/self.mon_period
         return diskstat
 
 
@@ -288,29 +294,108 @@ class HostMonitor(Monitor):
 
     def __init__(self, url, user, password):
         super(HostMonitor,self).__init__(url, user, password)
+        self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
+        self.cpu_state = {}
+        self.mem_state = {}
+        self.net_state = {}
+        self.disk_state = {}
+
+     
+    def get_all_vm_opaque_ref(self):
+        return self.xapi.VM.get_all()
+
+    
+    def get_vm_uuid_by_ref(self,ref):
+        return self.xapi.VM.get_record(ref).get('uuid')
+
+
+    def get_host_data(self, key=None):
+        host = {}
+        for param in self.rrd_updates.get_host_param_list(key):
+            if param != "":
+                #print "host param: %s" % param
+                max_time = 0.0   
+                data = ""
+                for row in range(self.rrd_updates.get_nrows()):
+                    epoch = self.rrd_updates.get_row_time(row)                    
+                    data_val = str(self.rrd_updates.get_host_data(param, row))
+                    #print "epoch: %s, data_val: %s" % (epoch, data_val)
+                    if epoch > max_time:
+                        max_time = epoch
+                        data = data_val
+                host[param] = data
+                #print "host_max_time: %s, host_max_data: %s" %(max_time, data)
+        return host
 
 
     def get_cpu(self):
         cpustat = {}
+        cpu_param_dict = self.get_host_data('cpu')
+        #print cpu_param_dict
+        cpustat['cpu_num'] = len(cpu_param_dict)
+        val = 0.0
+        nrows = self.rrd_updates.get_nrows()
+        for row in range(nrows):
+            for param in cpu_param_dict:
+                val += self.rrd_updates.get_host_data(param, row)
+        #print val
+        cpustat['cpu_utilication'] = val/(cpustat['cpu_num']*nrows)
+        self.cpu_state = cpustat
+        return cpustat
 
 
     def get_memory(self):
         memstat = {}       
+        mem_param_dict = self.get_host_data('memory')
+        #print mem_param_dict
+        memstat['total_memory'] = float(mem_param_dict['memory_total_kib'])
+        memstat['free_memory'] = float(mem_param_dict['memory_free_kib'])
+        memstat['used_memory'] = memstat['total_memory'] - memstat['free_memory']
+        memstat['memory_utilization'] = memstat['used_memory']/memstat['total_memory'] 
+        self.mem_stat = memstat
+        return memstat
 
 
     def get_network(self):
         netstat = {}
+        net_param_dict = self.get_host_data('pif_xenbr')
+        #print net_param_dict
+        xenbr_rx_total = 0.0
+        xenbr_tx_total = 0.0
+        for k,v in net_param_dict.iteritems():
+            if k.endswith('rx'):
+                xenbr_rx_total += float(v)
+            elif k.endswith('tx'):
+                xenbr_tx_total += float(v)
+        #print xenbr_rx_total, xenbr_tx_total
+        netstat['xenbr_rx_total'] = xenbr_rx_total
+        netstat['xenbr_tx_total'] = xenbr_tx_total
+        netstat['avg_xenbr_tx_rate'] = netstat['xenbr_tx_total']/self.mon_period
+        netstat['avg_xenbr_rx_rate'] = netstat['xenbr_rx_total']/self.mon_period
+        self.net_state = netstat 
+        return netstat
 
 
     def get_disk(self):
         diskstat = {}
+        return diskstat
+
+
+    def get_host_current_load(self):    
+        pass
+
+
+            
 
 
 
+def KBToBytes(size):
+    return size*1024 
 
-def byteToMB(size):
+
+def BytesToMB(size):
     """ bytes converts to Mbytes, here we use left shift to determine it. """
-    return size/(2<<19)
+    return size/(1<<20)
 
 
 def sys_load(dataList):
@@ -330,9 +415,22 @@ def exp_smoothing(dataList):
 
 
 if __name__ == "__main__":
-    mon = VMMonitor(*sys.argv[1:])
-    print mon.get_vm_data(use_time_meta=True)
-    print mon.get_cpu()
-    print mon.get_memory()
-    print mon.get_network()
-    mon.get_disk()
+    url = sys.argv[1]
+    user = sys.argv[2]
+    password = sys.argv[3]
+    #vm_uuid = sys.argv[4] 
+
+
+    #vmmon = VMMonitor(url, user, password, vm_uuid)
+    hostmon = HostMonitor(url, user, password)
+
+    for vm_opaque_ref in hostmon.get_all_vm_opaque_ref():
+        vm_uuid = hostmon.get_vm_uuid_by_ref(vm_opaque_ref)
+        print vm_uuid
+        #vmmon = VMMonitor(url, user, password, vm_uuid)
+        #print vmmon.get_vm_data(use_time_meta=True)
+    #print vmmon.get_cpu()
+    #print vmmon.get_memory()
+    #print vmmon.get_network()
+    #print vmmon.get_disk()
+
