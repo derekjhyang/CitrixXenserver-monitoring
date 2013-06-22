@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.4
+from __future__ import division
 import sys
 import time
 import XenAPI
@@ -8,7 +9,7 @@ from parse_rrd import RRDUpdates
 from xml import sax
 
 
-""" Here we use SAX to parse XML metric data """
+""" Here we use SAX to parse XML metric data (Current not in use)"""
 class RRDContentHandler(sax.ContentHandler):
     """
        Xenserver performance metric data is in the format:
@@ -142,7 +143,7 @@ class Monitor(object):
         self.params['start'] = int(time.time()) - period
         self.params['interval'] = step # step
         self.params['end'] = self.params['start'] + period
-        self.params['period'] = period
+        self.mon_period = period
         self.rrd_updates = RRDUpdates()
    
     def get_cpu(self):
@@ -202,29 +203,39 @@ class VMMonitor(Monitor):
         cpustat['cpu_num'] = len(cpu_param_dict)
         val = 0.0
         nrows = self.rrd_updates.get_nrows()
-        print "number of rows: %s" % nrows
+        #print "number of rows: %s" % nrows
         for row in range(nrows):
             for c in cpu_param_dict:
                 val += self.rrd_updates.get_vm_data(self.vm_uuid, c, row)
                 print "param: %s, val: %s" % (c, val) 
-        print val    
+        #print val    
         cpustat['cpu_utilization'] = val/(cpustat['cpu_num']*nrows)
         return cpustat
 
 
     def get_memory(self):
+        """ unit: bytes """
         memstat = {}
         mem_data_dict = self.get_vm_data('memory')
-        print mem_data_dict
-        memstat['total_memory'] = toMB(float(mem_data_dict['memory'])) 
-        #if mem_data_dict.has_key('memory_internal_free'):
-        #    memstat['free_memory'] = toMB(float(mem_data_dict['memory_internal_free']))
-        #    memstat['used_memory'] = toMB(float(mem_data_dict['memory_target']) - float(mem_data_dict['memory_internal_free']))
-        #    memstat['memory_utilization'] = float(memstat['used_memory']*100/float(mem_data_dict['memory_target']))
+        #print mem_data_dict
+        
+        ## 0 <= memory_static_min <= memory_dynamic_min <= memory_dynamic_max <= memory_static_max ##
+        
         vm_ref = self.xapi.VM.get_by_uuid(self.vm_uuid)
-        vm_gmetric_ref = self.xapi.VM.get_record(vm_ref).get('guest_metrics')
-        print vm_gmetric_ref
-        print self.xapi.VM_guest_metrics.get_record(vm_gmetric_ref)
+        # static part
+        memstat['memory_static_min'] = int(self.xapi.VM.get_record(vm_ref).get('memory_static_min'))
+        memstat['memory_static_max'] = int(self.xapi.VM.get_record(vm_ref).get('memory_static_max'))
+        # dynamic part
+        memstat['memory_dynamic_min'] = int(self.xapi.VM.get_record(vm_ref).get('memory_dynamic_min'))
+        memstat['memory_dynamic_max'] = int(self.xapi.VM.get_record(vm_ref).get('memory_dynamic_max'))
+        
+        
+        memstat['total_memory'] = float(mem_data_dict['memory'])
+        if mem_data_dict.has_key('memory_internal_free'):
+            memstat['free_memory'] = float(mem_data_dict['memory_internal_free'])*1024
+            memstat['used_memory'] = memstat['total_memory'] - memstat['free_memory'] 
+            memstat['memory_utilization'] = memstat['used_memory']/memstat['total_memory']
+        
         return memstat
 
  
@@ -244,9 +255,9 @@ class VMMonitor(Monitor):
                 tx_total += float(v)
         #print rx_total, tx_total
         netstat['rx_total'] = rx_total
-        netstat['rx_rate'] = (netstat['rx_total']*8)/self.params['period'] # unit: bit per second
+        netstat['rx_rate'] = (netstat['rx_total']*8)/self.mon_period # unit: bit per second
         netstat['tx_total'] = tx_total
-        netstat['tx_rate'] = (netstat['tx_total']*8)/self.params['period'] # unit: bit per second
+        netstat['tx_rate'] = (netstat['tx_total']*8)/self.mon_period # unit: bit per second
         return netstat
 
 
@@ -275,6 +286,7 @@ class HostMonitor(Monitor):
 
     def get_disk(self):
         pass
+
 
 def toMB(size):
     return size/(2<<19)

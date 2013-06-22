@@ -53,18 +53,29 @@ class RRDUpdates:
         if not report:
             return []
         if key is not None:
-            return [k for k in report.keys() if k.startswith(key)]
+            import re
+            str = "(.)*"+key+"(.)*"
+            pattern = re.compile(str)
+            #return [k for k in report.keys() if k.startswith(key)]
+            return [k for k in report.keys() if re.match(pattern,k)]
         else:
             return report.keys()
 
 
-    def get_vm_param_dict(self, uuid, key):
+    def get_vm_param_dict(self, uuid, key=None):
         report = self.vm_reports[uuid]
         if not report:
-            report = {}
-        return  dict((k,v) for k,v in report.iteritems() if k.startswith(key))
-
+            return {}
+        if key is not None:
+            import re
+            str = "(.)*"+key+"(.)*"
+            pattern = re.compile(str)
+            #return  dict((k,v) for k,v in report.iteritems() if k.startswith(key))
+            return  dict((k,v) for k,v in report.iteritems() if re.match(pattern, k))
+        else:
+            return report
  
+
     def get_vm_data(self, uuid, param, row):
         report = self.vm_reports[uuid]
         col = report[param]
@@ -78,11 +89,31 @@ class RRDUpdates:
         return report.uuid
 
 
-    def get_host_param_list(self):
+    def get_host_param_list(self, key=None):
         report = self.host_report
         if not report:
             return []
-        return report.keys()
+        if key is not None:
+            import re
+            str = "(.)*"+key+"(.)*"
+            pattern = re.compile(str)
+            #return [k for k in report.keys() if k.startswith(key)]
+            return [k for k in report.keys() if re.match(pattern, k)]
+        else:
+            return report.keys()
+
+
+    def get_host_param_dict(self, key=None):
+        report = self.host_report
+        if not report:
+            return {}
+        if key is not None:
+            import re
+            str = "(.)*"+key+"(.)*"
+            pattern = re.compile(str)
+            return dict((k,v) for k,v in report.iteritems() if re.match(pattern,k))
+        else:
+            return report
 
 
     def get_host_data(self, param, row):
