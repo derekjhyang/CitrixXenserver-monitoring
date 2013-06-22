@@ -308,7 +308,7 @@ class HostMonitor(Monitor):
 
 
 
-def BytetoMB(size):
+def byteToMB(size):
     """ bytes converts to Mbytes, here we use left shift to determine it. """
     return size/(2<<19)
 
