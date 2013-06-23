@@ -5,14 +5,11 @@ import time
 import XenAPI
 #import numpy
 import platform
-#from XenAPI import xapi_local as XMLRPCProxy
+from XenAPI import xapi_local as XenXmlRPCProxy
 from parse_rrd import RRDUpdates
 from xml import sax
 
-
-class ParamMatchError(Exception): pass
-
-
+##class ParamMatchError(Exception): pass
 
 """ Here we use SAX to parse XML metric data (Current not in use)"""
 class RRDContentHandler(sax.ContentHandler):
@@ -140,13 +137,13 @@ class RRDContentHandler(sax.ContentHandler):
 class Monitor(object):
     def __init__(self, url, user, password, period=300, step=1):
         self.url = "https://"+url+":443"
-        ### http login ###
+        ### url session login ###
         #self.session = XenAPI.Session(url)
         #self.session.xenapi.login_with_password(user,password)
         #self.xapi = self.session.xenapi
 
         ### local client proxy login ###
-        self.session = XenAPI.xapi_local()
+        self.session = XenXmlRPCProxy()
         self.session.login_with_password(user, password)     
         self.xapi = self.session.xenapi
         
@@ -397,10 +394,6 @@ class HostMonitor(Monitor):
         pass
 
 
-            
-
-
-
 def KBToBytes(size):
     return size*1024 
 
@@ -418,12 +411,25 @@ def sys_load(dataList):
     #return numpy.std(dataList)
     pass
 
-def exp_smoothing(dataList):
-    """
-        here we use 'exponential smoothing' to predict the next time period data value
-    """
-    pass
 
+def ema( period, pre_ema, alpha=None):
+    """
+        here we use 'exponential moving average' to predict the next time period data value
+
+        # alpha: smoothing factor
+        # EMA: 
+              EMA(t+1) = alpha*X(t) + (1-alpha)*EMA(t) = EMA(t) + alpha*( X(t) - EMA(t) )
+                 
+              where X(t) is observation value at time t periods
+                    EMA(t+1) is prediction value at time (n+1) periods
+    """
+    if alpha:
+        if (alpha<0) or (alpha>1):
+            raise ValueError("0 < smoothing factor <= 1")
+    else:
+       alpha = 2.0 / (period+1.0)
+  
+    
 
 
 if __name__ == "__main__":
@@ -431,6 +437,8 @@ if __name__ == "__main__":
     user = sys.argv[2]
     password = sys.argv[3]
     hostmon = HostMonitor(url, user, password)
+    print hostmon.get_cpu()
+    print hostmon.get_memory()
     for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
         vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
         label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
@@ -441,4 +449,4 @@ if __name__ == "__main__":
         print vmmon.get_memory()
         print vmmon.get_network()
         print vmmon.get_disk()
-
+        print "\n\n"
