@@ -249,6 +249,8 @@ class VMMonitor(Monitor):
     def get_network(self):
         netstat = {}
         net_param_dict = self.get_vm_data('vif')
+        if len(net_param_dict):
+            netstat.update(net_param_dict)
         #print net_param_dict
         import re
         rx_re_pattern = re.compile('vif_[0-9]_rx')
