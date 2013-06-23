@@ -23,12 +23,13 @@ class Monitor(object):
         self.session.login_with_password(user, password)     
         self.xapi = self.session.xenapi
         
+        ## Xenserver RRDs query parameter settings ##
         self.params = {}
-        self.params['cf'] = 'AVERAGE' # consolidation function
-        self.params['start'] = int(time.time()) - period
+        self.params['cf'] = 'AVERAGE' # consolidation function: MIN/MAX/AVERAGE/LAST
+        self.params['start'] = int(time.time()) - period # start time
         self.params['interval'] = step # step
-        self.params['end'] = self.params['start'] + period
-        self.mon_period = period
+        self.params['end'] = self.params['start'] + period # end time
+        self.mon_period = period # monitor time period
         self.rrd_updates = RRDUpdates()
    
     def get_cpu(self):
@@ -284,7 +285,7 @@ class HostMonitor(Monitor):
         pass
 
 
-    def get_host_current_load(self):    
+    def get_host_current_load(self): 
         pass
 
 
@@ -310,11 +311,12 @@ def ema( period, pre_ema, alpha=None):
     """
        here we use 'exponential moving average' to predict the next time period data value
     # alpha: smoothing factor
-    # EMA: 
-         EMA(t+1) = alpha*X(t) + (1-alpha)*EMA(t) = EMA(t) + alpha*( X(t) - EMA(t) )
+    # EMA Formula: 
+         EMA(1) = X(0)
+         EMA(t) = alpha*X(t-1) + (1-alpha)*EMA(t-1) = EMA(t-1) + alpha*( X(t-1) - EMA(t-1) )
                  
          where X(t) is observation value at time t period           
-               EMA(t+1) is prediction value at time (n+1) periods
+               EMA(t) is prediction value at time n periods
     """
     if alpha:
         if (alpha<0) or (alpha>1):
