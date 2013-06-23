@@ -9,130 +9,6 @@ from XenAPI import xapi_local as XenXmlRPCProxy
 from parse_rrd import RRDUpdates
 from xml import sax
 
-##class ParamMatchError(Exception): pass
-
-""" Here we use SAX to parse XML metric data (Current not in use)"""
-class RRDContentHandler(sax.ContentHandler):
-    """
-       Xenserver performance metric data is in the format:
-    <xport>
-      <meta>
-       <start>INTEGER</start>
-       <step>INTEGER</step>
-       <end>INTEGER</end>
-       <rows>INTEGER</rows>
-       <columns>INTEGER</columns>
-       <legend>
-        <entry>IGNOREME:(host|vm):UUID:PARAMNAME</entry>
-        ... another COLUMNS-1 entries ...
-       </legend>
-      </meta>
-      <data>
-       <row>
-        <t>INTEGER(END_TIME)</t>  # end time
-        <v>FLOAT</v>              # value
-        ... another COLUMNS-1 values ...
-       </row>
-       ... another ROWS-2 rows
-       <row>
-        <t>INTEGER(START_TIME)</t>
-        <v>FLOAT</v>
-        ... another COLUMNS-1 values ...
-       </row>
-      </data>
-    </xport>
-    """
-
-    def __init__(self, report):
-        "report is saved and later updated by this object. report should contain defaults already"
-        self.report = report
-        self.in_start_tag = False
-        self.in_step_tag = False
-        self.in_end_tag = False
-        self.in_rows_tag = False
-        self.in_columns_tag = False
-        self.in_entry_tag = False
-        self.in_row_tag = False
-        self.column_details = []
-        self.row = 0
-
-
-    def startElement(self, name, attrs):
-        self.raw_text = ""
-        if name == 'start':
-            self.in_start_tag = True
-        elif name == 'step':
-            self.in_step_tag = True
-        elif name == 'end':
-            self.in_end_tag = True
-        elif name == 'rows':
-            self.in_rows_tag = True
-        elif name == 'columns':
-            self.in_columns_tag = True
-        elif name == 'entry':
-            self.in_entry_tag = True
-        elif name == 'row':
-            self.in_row_tag = True
-            self.col = 0
-        if self.in_row_tag:
-            if name == 't':
-                self.in_t_tag = True
-            elif name == 'v':
-                self.in_v_tag = True
-
-
-    def endElement(self, name):
-        if name == 'start':
-            # This overwritten later if there are any rows
-            self.report.start_time = int(self.raw_text)
-            self.in_start_tag = False
-        elif name == 'step':
-            self.report.step_time = int(self.raw_text)
-            self.in_step_tag = False
-        elif name == 'end':
-            # This overwritten later if there are any rows
-            self.report.end_time = int(self.raw_text)
-            self.in_end_tag = False
-        elif name == 'rows':
-            self.report.rows = int(self.raw_text)
-            self.in_rows_tag = False
-        elif name == 'columns':
-            self.report.columns = int(self.raw_text)
-            self.in_columns_tag = False
-        elif name == 'entry':
-            (_, objtype, uuid, paramname) = self.raw_text.split(':')
-            # lookup the obj_report corresponding to this uuid, or create if it does not exist
-            if not self.report.obj_reports.has_key(uuid):
-                self.report.obj_reports[uuid] = ObjectReport(objtype, uuid)
-            obj_report = self.report.obj_reports[uuid]
-            # save the details of this column
-            self.column_details.append(RRDColumn(paramname, obj_report))
-            self.in_entry_tag = False
-        elif name == 'row':
-            self.in_row_tag = False
-            self.row += 1
-        elif name == 't':
-            # Extract start and end time from row data as it's more reliable than the values in the meta data
-            t = int(self.raw_text)
-            # Last row corresponds to start time
-            self.report.start_time = t
-            if self.row == 0:
-                # First row corresponds to end time
-                self.report.end_time = t
-            self.in_t_tag = False
-        elif name == 'v':
-            v = float(self.raw_text)
-            # Find object report and paramname for this col
-            col_details = self.column_details[self.col]
-            obj_report = col_details.obj_report
-            paramname = col_details.paramname
-            # Update object_report
-            obj_report.insert_value(paramname, index=0, value=v) # use index=0 as this is the earliest sample so far
-            # Update position in row
-            self.col += 1
-            self.in_t_tag = False
-
-
 
 class Monitor(object):
     def __init__(self, url, user, password, period=300, step=1):
@@ -170,11 +46,18 @@ class Monitor(object):
 
 
 class VMMonitor(Monitor):
+
     def __init__(self, url, user, password, uuid):
         super(VMMonitor, self).__init__(url, user, password)
-        self.vm_uuid = uuid 
+        self.vm_uuid = uuid
+
+        # do rrdtool refresh 
         self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
 
+        # each resource data point set which used to feed statistics information
+        # to RRDtools
+        self.statistics = {}
+       
  
     def get_vm_data(self, key=None, use_time_meta=False): 
         vm = {}       
@@ -306,11 +189,17 @@ class HostMonitor(Monitor):
         self.mem_state = {}
         self.net_state = {}
         self.disk_state = {}
+        # if we not provide the Xenserver host we want to monitor,
+        # it can retrieve its hostname here.
         if hostname is None:
             self.hostname = platform.node()
         else:
             self.hostname = hostname
-     
+
+        # each resource data point set which used to feed statistics information
+        # to RRDtools
+        self.statistics = {} # here we gather host resource statistics info.
+  
 
     def get_allAvailHostingVMOpaqueRef(self):
         host_opaque_ref = "".join(self.xapi.host.get_by_name_label(self.hostname))
@@ -388,8 +277,9 @@ class HostMonitor(Monitor):
 
 
     def get_disk(self):
-        diskstat = {}
-        return diskstat
+        #diskstat = {}
+        #return diskstat
+        pass
 
 
     def get_host_current_load(self):    
@@ -405,13 +295,13 @@ def BytesToMB(size):
     return size/(1<<20)
 
 
-def sys_load(dataList):
+def sys_load(list):
     """ 
         here we use 'standard deviation' to determine whether the system load is balanced,
         where the sys_load value is small better.
     """
-    #return numpy.std(dataList)
-    pass
+    avg = sum(list)/float(len(list))
+    return math.sqrt(sum(map(lambda x: (x-avg)**2,list))/len(list))  
 
 
 def ema( period, pre_ema, alpha=None):
@@ -444,11 +334,11 @@ if __name__ == "__main__":
     for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
         vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
         label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
-        print vm_uuid, label
+        #print vm_uuid, label
         vmmon = VMMonitor(url, user, password, vm_uuid)
         print vmmon.get_vm_data(use_time_meta=True)
         print vmmon.get_cpu()
         print vmmon.get_memory()
         print vmmon.get_network()
         print vmmon.get_disk()
-        print "\n\n"
+        #print "\n\n"
