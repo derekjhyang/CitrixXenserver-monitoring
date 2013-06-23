@@ -1,19 +1,19 @@
 #!/usr/bin/env python2.4
-from __future__ import division
+from __future__ import division # for float division
 import sys
 import time
 import XenAPI
-#import numpy
 import platform
 from XenAPI import xapi_local as XenXmlRPCProxy
 from parse_rrd import RRDUpdates
-from xml import sax
 
 
 class Monitor(object):
     def __init__(self, url, user, password, period=300, step=1):
         self.url = "https://"+url+":443"
         ### url session login ###
+        # enable the following code section, we can login the other
+        # xenserver host via https seesion
         #self.session = XenAPI.Session(url)
         #self.session.xenapi.login_with_password(user,password)
         #self.xapi = self.session.xenapi
@@ -77,13 +77,15 @@ class VMMonitor(Monitor):
                 if use_time_meta:
                     vm['max_timestamp'] = max_time
                     vm['max_time'] = time.strftime("%H:%M:%S", time.localtime(max_time))
-                vm[param] = data        
+                vm[param] = data 
+       
         if use_time_meta:
             vm['start_timestamp'] = self.params['start']
             vm['end_timestamp'] = self.params['end']
             vm['start_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['start']))
             vm['end_time'] = time.strftime("%H:%M:%S", time.localtime(self.params['end']))
             vm['period'] = self.params['end'] - self.params['start']
+        
         return vm
 
 
@@ -306,14 +308,13 @@ def sys_load(list):
 
 def ema( period, pre_ema, alpha=None):
     """
-        here we use 'exponential moving average' to predict the next time period data value
-
-        # alpha: smoothing factor
-        # EMA: 
-              EMA(t+1) = alpha*X(t) + (1-alpha)*EMA(t) = EMA(t) + alpha*( X(t) - EMA(t) )
+       here we use 'exponential moving average' to predict the next time period data value
+    # alpha: smoothing factor
+    # EMA: 
+         EMA(t+1) = alpha*X(t) + (1-alpha)*EMA(t) = EMA(t) + alpha*( X(t) - EMA(t) )
                  
-              where X(t) is observation value at time t periods
-                    EMA(t+1) is prediction value at time (n+1) periods
+         where X(t) is observation value at time t period           
+               EMA(t+1) is prediction value at time (n+1) periods
     """
     if alpha:
         if (alpha<0) or (alpha>1):
