@@ -3,7 +3,7 @@ CitrixXenserver-monitoring
 
 monitor.py it can monitor xenserver host and those VMs which is hosting on it,
 
-but it depens on parse_rrd.py to parse XML-format data.
+but it depends on parse_rrd.py to parse XML-format data.
 
 enjoy it
 
