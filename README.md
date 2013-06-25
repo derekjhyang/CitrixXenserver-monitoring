@@ -5,4 +5,4 @@ CitrixXenserver-monitoring
 reference from http://community.citrix.com/display/xs/parse_rrd.py+(Python+Script+for+parsing+RRDs)
 
 # Usage:
-./monitor <url> <user> <password>
+./monitor \<url\> \<user\> \<password\>
