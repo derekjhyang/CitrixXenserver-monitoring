@@ -15,4 +15,4 @@ if have any problem, you can contact me
 reference from http://community.citrix.com/display/xs/parse_rrd.py+(Python+Script+for+parsing+RRDs)
 
 # Usage:
-./monitor \<url\> \<user\> \<password\>
+./monitor.py \<url\> \<user\> \<password\>
