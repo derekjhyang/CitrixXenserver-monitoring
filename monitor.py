@@ -387,9 +387,4 @@ if __name__ == "__main__":
         print vmmon.get_network()
         print vmmon.get_disk()
         #print "\n\n"
-<<<<<<< HEAD
     #print ema(range(1,10))
-=======
-
-    print hostmon.get_statistics()
->>>>>>> e28cb7844652c500f8635dd7f981db551279829f
