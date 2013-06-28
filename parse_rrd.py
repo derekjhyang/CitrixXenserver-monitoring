@@ -151,7 +151,7 @@ class RRDUpdates:
         paramstr = "&".join(["%s=%s"  % (k,params[k]) for k in params])
         url = "%s/rrd_updates?%s" % (server, paramstr)
 
-        print "RRD Query:\n %s" % url
+        #print "RRD Query:\n %s" % url
         # this is better than urllib.urlopen() as it raises an Exception on http 401 'Unauthorised' error
         # rather than drop into interactive mode
         sock = urllib.URLopener().open(url)

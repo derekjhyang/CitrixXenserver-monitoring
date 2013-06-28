@@ -8,7 +8,6 @@ import platform
 from XenAPI import xapi_local as XenXmlRPCProxy
 from parse_rrd import RRDUpdates
 
-
 class Monitor(object):
     def __init__(self, url, user, password, period=300, step=1):
         self.url = "https://"+url+":443"
@@ -370,21 +369,67 @@ def ema(list, alpha=None):
 
 
 if __name__ == "__main__":
+    
+    if len(sys.argv) < 5:
+        print 'usage: ./monitor.py <host> <user> <password> <type>'
+        sys.exit()
+
     url = sys.argv[1]
     user = sys.argv[2]
     password = sys.argv[3]
+        
+    data_type = sys.argv[4]
+    
     hostmon = HostMonitor(url, user, password)
-    print hostmon.get_cpu()
-    print hostmon.get_memory()
-    for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
-        vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
-        label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
-        #print vm_uuid, label
-        vmmon = VMMonitor(url, user, password, vm_uuid)
-        print vmmon.get_vm_data(use_time_meta=True)
-        print vmmon.get_cpu()
-        print vmmon.get_memory()
-        print vmmon.get_network()
-        print vmmon.get_disk()
-        #print "\n\n"
+    
+    if data_type == 'vm-list':
+        monData = {}
+        for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+            vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+            label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+            monData[vm_uuid] = label            
+        print monData
+    elif data_type == 'cpu':
+        for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+            vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+            label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+            vmmon = VMMonitor(url, user, password, vm_uuid)
+            monData = vmmon.get_cpu()
+            monData['uuid'] = vm_uuid
+            monData['label'] = label
+            print monData
+    elif data_type == 'memory':
+        for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+            vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+            label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+            vmmon = VMMonitor(url, user, password, vm_uuid)
+            monData = vmmon.get_memory()
+            monData['uuid'] = vm_uuid
+            monData['label'] = label
+            print monData
+    elif data_type == 'network':
+        for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+            vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+            label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+            vmmon = VMMonitor(url, user, password, vm_uuid)            
+            monData = vmmon.get_network()
+            monData['uuid'] = vm_uuid
+            monData['label'] = label
+            print monData
+    else:
+        print 'invalid monitor type.'
+    
+    #print hostmon.get_cpu()
+    #print hostmon.get_memory()
+    #for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
+    #    vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
+    #    label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
+    #    print vm_uuid, label
+    #    vmmon = VMMonitor(url, user, password, vm_uuid)
+    #    print vmmon.get_vm_data(use_time_meta=True)
+    #    print vmmon.get_cpu()
+    #    print vmmon.get_memory()
+    #    print vmmon.get_network()
+    #    print vmmon.get_disk()
+    #    print "\n\n"
     #print ema(range(1,10))
