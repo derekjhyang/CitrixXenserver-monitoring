@@ -314,7 +314,7 @@ def sys_load(list):
     return math.sqrt(sum(map(lambda x: (x-avg)**2,list))/len(list))  
 
 
-def ema(list, alpha=None):
+def ema(l, alpha=None):
     """
        here we use 'exponential moving average' to predict the next time period data value
     # EMA Formula: 
@@ -346,11 +346,11 @@ def ema(list, alpha=None):
     """
     ema_data = []
     
-    # reversed order for the whole list (big->small)
-    rev_list = sorted(list,reverse=True)
+    # reverse the whole list
+    rev_list = l[::-1]
     
     if not alpha:
-       alpha = 1/len(rev_list) # defaults 
+       alpha = 1/(len(rev_list)+1.25) # defaults 
     if (alpha<0) or (alpha>1):
        raise ValueError("0 < smoothing factor <= 1")
     
