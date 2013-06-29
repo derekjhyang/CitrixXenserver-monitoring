@@ -362,8 +362,6 @@ def ema(list, alpha=None):
         # calculate 1st~(t-1)-th terms corresponding exponential factor
         pre_exp_factor = [ alpha_bar**(i-1) for i in range(1,len(nterms))]
         # calculate the ema at the next time periods
-        #ema_data.append( alpha*sum(map(lambda a,b: a*b, pre_exp_factor, nterms[:-1])) + \
-        #                 (alpha_bar**len(nterms))*nterms[-1])
         ema_data.append(alpha*float(sum(float(a)*float(b) for a,b in zip(tuple(pre_exp_factor), tuple(nterms[:-1])))) + \
                          (alpha_bar**len(nterms))*float(nterms[-1]))
     return sorted(ema_data)
