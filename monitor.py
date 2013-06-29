@@ -224,7 +224,7 @@ class HostMonitor(Monitor):
                 for row in range(self.rrd_updates.get_nrows()):
                     epoch = self.rrd_updates.get_row_time(row)                    
                     data_val = str(self.rrd_updates.get_host_data(param, row))
-                    print "row: %s, epoch: %s, param: %s, data_val: %s" % (row, epoch, param, data_val)
+                    #print "row: %s, epoch: %s, param: %s, data_val: %s" % (row, epoch, param, data_val)
                     self.__statistics[param].append((epoch, data_val))
                     if epoch > max_time:
                         max_time = epoch
@@ -370,18 +370,26 @@ def ema(l, alpha=None):
 
 if __name__ == "__main__":
     
-    if len(sys.argv) < 5:
-        print 'usage: ./monitor.py <host> <user> <password> <type>'
-        sys.exit()
+    #if len(sys.argv) < 5:
+    #    print 'usage: ./monitor.py <host> <user> <password> <type>'
+    #    sys.exit()
 
     url = sys.argv[1]
     user = sys.argv[2]
     password = sys.argv[3]
-        
-    data_type = sys.argv[4]
+    #data_type = sys.argv[4]
     
     hostmon = HostMonitor(url, user, password)
-    
+    hostmon.get_host_data()
+    for p in hostmon.get_statistics():
+        time = [t for t, v in hostmon.get_statistics()[p]]
+        value = [float(v) for t,v in hostmon.get_statistics()[p]]
+        pred = ema(value)
+        print "time=%s" % time
+        print "value=%s" % value
+        print "pred=%s" % pred
+    sys.exit(0)
+   
     if data_type == 'vm-list':
         monData = {}
         for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
