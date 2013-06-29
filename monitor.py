@@ -220,12 +220,12 @@ class HostMonitor(Monitor):
                 #print "host param: %s" % param
                 max_time = 0.0   
                 data = ""
-                self.__statistics[param] = {}
+                self.__statistics[param] = []  # here we use list to collect data-points
                 for row in range(self.rrd_updates.get_nrows()):
                     epoch = self.rrd_updates.get_row_time(row)                    
                     data_val = str(self.rrd_updates.get_host_data(param, row))
                     print "row: %s, epoch: %s, param: %s, data_val: %s" % (row, epoch, param, data_val)
-                    self.__statistics[param][epoch] = data_val
+                    self.__statistics[param].append((epoch, data_val))
                     if epoch > max_time:
                         max_time = epoch
                         data = data_val
@@ -362,8 +362,10 @@ def ema(list, alpha=None):
         # calculate 1st~(t-1)-th terms corresponding exponential factor
         pre_exp_factor = [ alpha_bar**(i-1) for i in range(1,len(nterms))]
         # calculate the ema at the next time periods
-        ema_data.append( alpha*sum(map(lambda a,b: a*b, pre_exp_factor, nterms[:-1])) + \
-                         (alpha_bar**len(nterms))*nterms[-1])
+        #ema_data.append( alpha*sum(map(lambda a,b: a*b, pre_exp_factor, nterms[:-1])) + \
+        #                 (alpha_bar**len(nterms))*nterms[-1])
+        ema_data.append(alpha*float(sum(float(a)*float(b) for a,b in zip(tuple(pre_exp_factor), tuple(nterms[:-1])))) + \
+                         (alpha_bar**len(nterms))*float(nterms[-1]))
     return sorted(ema_data)
 
 
