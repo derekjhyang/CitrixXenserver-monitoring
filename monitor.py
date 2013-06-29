@@ -360,11 +360,11 @@ def ema(list, alpha=None):
     #print num_terms_list
     for nterms in num_terms_list:
         # calculate 1st~(t-1)-th terms corresponding exponential factor
-        pre_exp_factor = [ alpha_bar**(i-1) for i in range(1,len(nterms))]
+        pre_exp_factor = [float(alpha_bar**(i-1)) for i in range(1,len(nterms))]
         # calculate the ema at the next time periods
         ema_data.append(alpha*float(sum(float(a)*float(b) for a,b in zip(tuple(pre_exp_factor), tuple(nterms[:-1])))) + \
-                         (alpha_bar**len(nterms))*float(nterms[-1]))
-    return sorted(ema_data)
+                         (alpha_bar**(len(nterms)-1))*float(nterms[-1]))
+    return ema_data
 
 
 
