@@ -48,9 +48,9 @@ class Monitor(object):
 
 class VMMonitor(Monitor):
 
-    def __init__(self, url, user, password, uuid):
+    def __init__(self, url, user, password):
         super(VMMonitor, self).__init__(url, user, password)
-        self.vm_uuid = uuid
+        #self.vm_uuid = uuid
 
         # do rrdtool refresh 
         self.rrd_updates.refresh(self.session.handle, self.params, self.url) 
@@ -60,9 +60,9 @@ class VMMonitor(Monitor):
         self.statistics = {}
        
  
-    def get_vm_data(self, key=None, use_time_meta=False): 
+    def get_vm_data(self, vm_uuid, key=None, use_time_meta=False): 
         vm = {}       
-        for param in self.rrd_updates.get_vm_param_list(self.vm_uuid, key):
+        for param in self.rrd_updates.get_vm_param_list(vm_uuid, key):
             if param != "":
                 """ here we gather the last time-point data"""
                 max_time = 0.0
@@ -70,7 +70,7 @@ class VMMonitor(Monitor):
                 #print "number of rows: %s" % self.rrd_updates.get_nrows()
                 for row in range(self.rrd_updates.get_nrows()):
                     epoch = self.rrd_updates.get_row_time(row)
-                    data_val = str(self.rrd_updates.get_vm_data(self.vm_uuid, param, row))
+                    data_val = str(self.rrd_updates.get_vm_data(vm_uuid, param, row))
                     #print "time: %s, data_val: %s" % (time.localtime(epoch),data_val)
                     if epoch > max_time:
                         max_time = epoch
@@ -90,33 +90,33 @@ class VMMonitor(Monitor):
         return vm
 
 
-    def get_cpu(self):
+    def get_cpu(self, vm_uuid):
         cpustat = {}
-        #cpu_params = self.rrd_updates.get_vm_param_dict(self.vm_uuid,'cpu') 
-        cpu_param_dict = self.get_vm_data('cpu')
+        #cpu_params = self.rrd_updates.get_vm_param_dict(vm_uuid,'cpu') 
+        cpu_param_dict = self.get_vm_data(vm_uuid, 'cpu')
         cpustat['vcpu_num'] = len(cpu_param_dict)
         val = 0.0
         nrows = self.rrd_updates.get_nrows() # row amount
         #print "number of rows: %s" % nrows
         for row in range(nrows):
             for param in cpu_param_dict:
-                val += self.rrd_updates.get_vm_data(self.vm_uuid, param, row)
+                val += self.rrd_updates.get_vm_data(vm_uuid, param, row)
                 #print "param: %s, val: %s" % (param, val) 
         #print val    
         cpustat['vcpu_utilization'] = val/(cpustat['vcpu_num']*nrows)
         return cpustat
 
 
-    def get_memory(self):
+    def get_memory(self, vm_uuid):
         """ unit: bytes """
         memstat = {}
-        mem_param_dict = self.get_vm_data('memory')
+        mem_param_dict = self.get_vm_data(vm_uuid, 'memory')
         #print mem_param_dict
         
         """
              0 <= memory_static_min <= memory_dynamic_min <= memory_dynamic_max <= memory_static_max
         """
-        vm_ref = self.xapi.VM.get_by_uuid(self.vm_uuid)
+        vm_ref = self.xapi.VM.get_by_uuid(vm_uuid)
         # static part
         memstat['memory_static_min'] = int(self.xapi.VM.get_record(vm_ref).get('memory_static_min'))
         memstat['memory_static_max'] = int(self.xapi.VM.get_record(vm_ref).get('memory_static_max'))
@@ -132,9 +132,9 @@ class VMMonitor(Monitor):
         return memstat
 
  
-    def get_network(self):
+    def get_network(self, vm_uuid):
         netstat = {}
-        net_param_dict = self.get_vm_data('vif')
+        net_param_dict = self.get_vm_data(vm_uuid, 'vif')
         if len(net_param_dict):
             netstat.update(net_param_dict)
         #print net_param_dict
@@ -158,9 +158,9 @@ class VMMonitor(Monitor):
         return netstat
 
 
-    def get_disk(self):
+    def get_disk(self, vm_uuid):
         diskstat = {}
-        disk_param_dict = self.get_vm_data('vbd')
+        disk_param_dict = self.get_vm_data(vm_uuid, 'vbd')
         #print disk_param_dict
         import re
         read_pattern = re.compile('vbd_(.)+_read')
@@ -211,7 +211,6 @@ class HostMonitor(Monitor):
             return []
         else:
             return self.xapi.host.get_record(host_opaque_ref).get('resident_VMs')
-
 
     def get_host_data(self, key=None):
         host = {}
@@ -377,19 +376,24 @@ if __name__ == "__main__":
     url = sys.argv[1]
     user = sys.argv[2]
     password = sys.argv[3]
-    #data_type = sys.argv[4]
+    data_type = sys.argv[4]
     
     hostmon = HostMonitor(url, user, password)
-    hostmon.get_host_data()
-    for p in hostmon.get_statistics():
-        time = [t for t, v in hostmon.get_statistics()[p]]
-        value = [float(v) for t,v in hostmon.get_statistics()[p]]
-        pred = ema(value)
-        print "time=%s" % time
-        print "value=%s" % value
-        print "pred=%s" % pred
-    sys.exit(0)
+    # hostmon.get_all_vm_data('cpu')
+    # sys.exit(0)
+    
+    # hostmon.get_host_data()
+    # for p in hostmon.get_statistics():
+        # time = [t for t, v in hostmon.get_statistics()[p]]
+        # value = [float(v) for t,v in hostmon.get_statistics()[p]]
+        # pred = ema(value)
+        # print "time=%s" % time
+        # print "value=%s" % value
+        # print "pred=%s" % pred
+    # sys.exit(0)
    
+    vmmon = VMMonitor(url, user, password)
+
     if data_type == 'vm-list':
         monData = {}
         for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
@@ -401,8 +405,8 @@ if __name__ == "__main__":
         for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
             vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
             label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
-            vmmon = VMMonitor(url, user, password, vm_uuid)
-            monData = vmmon.get_cpu()
+            
+            monData = vmmon.get_cpu(vm_uuid)
             monData['uuid'] = vm_uuid
             monData['label'] = label
             print monData
@@ -410,8 +414,8 @@ if __name__ == "__main__":
         for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
             vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
             label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
-            vmmon = VMMonitor(url, user, password, vm_uuid)
-            monData = vmmon.get_memory()
+            
+            monData = vmmon.get_memory(vm_uuid)
             monData['uuid'] = vm_uuid
             monData['label'] = label
             print monData
@@ -419,8 +423,8 @@ if __name__ == "__main__":
         for vm_opaque_ref in hostmon.get_allAvailHostingVMOpaqueRef():
             vm_uuid = hostmon.xapi.VM.get_record(vm_opaque_ref).get('uuid')
             label = hostmon.xapi.VM.get_record(vm_opaque_ref).get('name_label')
-            vmmon = VMMonitor(url, user, password, vm_uuid)            
-            monData = vmmon.get_network()
+                      
+            monData = vmmon.get_network(vm_uuid)
             monData['uuid'] = vm_uuid
             monData['label'] = label
             print monData
