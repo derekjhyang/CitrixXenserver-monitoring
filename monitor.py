@@ -444,4 +444,4 @@ if __name__ == "__main__":
     #    print vmmon.get_network()
     #    print vmmon.get_disk()
     #    print "\n\n"
-    #print ema(range(1,10))
+    #print ema(range(1,10)) 
