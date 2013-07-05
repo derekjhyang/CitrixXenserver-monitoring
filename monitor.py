@@ -353,7 +353,7 @@ def ema(L, alpha=None):
     rev_list = L[::-1] # reverse origin list
     
     """ generate [x(0)], [x(1),x(0)], [x(2),x(1),x(0)],.... """
-    num_terms_list = [ L[-i:] for i in range(1,len(rev_list))]
+    num_terms_list = [ L[-i:] for i in range(1,len(rev_list)+1)]
     #print num_terms_list
     for nterms in num_terms_list:
         # calculate 1st~(t-1)-th terms corresponding exponential factor
