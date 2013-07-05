@@ -313,17 +313,17 @@ def sys_load(list):
     return math.sqrt(sum(map(lambda x: (x-avg)**2,list))/len(list))  
 
 
-def ema(l, alpha=None):
+def ema(L, alpha=None):
     """
        here we use 'exponential moving average' to predict the next time period data value
-    # EMA Formula: 
+    # EMA Formula:
 
          X(0),X(1),X(2),...,X(t-1) : data-sets total with "t" time-period-points
 
          EMA(1) = X(0) // initial point            -> 1 terms
-         EMA(2) = EMA(1) + alpha*(X(1)-EMA(1)) 
+         EMA(2) = EMA(1) + alpha*(X(1)-EMA(1))
                 = alpha*[X(1)] + (1-alpha)*X(0)    -> 2 terms
-         EMA(3) = EMA(2) + alpha*[X(2)-EMA(2)] 
+         EMA(3) = EMA(2) + alpha*[X(2)-EMA(2)]
                 = [alpha*X(1)+(1-alpha)*X(0)] + alpha*[X(2)-(alpha*X(1)+(1-alpha)*X(0))]
                 = alpha*[X(2)+(1-alpha)*X(1)] + (1-alpha-alpha-alpha^2)*X(0)
                 = alph*[X(2)+(1-alpha)*X(1)] + (1-alpha)^2*X(0)     -> 3 terms
@@ -334,28 +334,26 @@ def ema(l, alpha=None):
                                     1st               2nd                     3rd                            (t-1)-th
                   = alpha*[ (1-alpha)^(0)*X(t-1) + (1-alpha)^(1)*X(t-2) + (1-alpha)^(2)*X(t-3) + ...+ (1-alpha)^(t-2)*X(t-(t-1)) ]
                             t-th
-                    + (1-alpha)^(t)*X(0)
+                    + (1-alpha)^(t-1)*X(0)
 
          alpha = 1 /(number of data-points)
-  
-         where alpha: smoothing factor 
-               X(t-1) is observation value at time (t-1) period           
+
+         where alpha: smoothing factor
+               X(t-1) is observation value at time (t-1) period
                EMA(t-1) is prediction value at time (t-1) periods
                EMA(t) is prediction value at time t periods
     """
     ema_data = []
-    
-    # reverse the whole list
-    rev_list = l[::-1]
-    
+
     if not alpha:
-       alpha = 1/(len(rev_list)+1.25) # defaults 
+       alpha = 1/(len(L)+1.25) # defaults
     if (alpha<0) or (alpha>1):
        raise ValueError("0 < smoothing factor <= 1")
-    
     alpha_bar = float(1-alpha)
+    rev_list = L[::-1] # reverse origin list
     
-    num_terms_list = [rev_list[:i] for i in range(1,len(rev_list)+1)]
+    """ generate [x(0)], [x(1),x(0)], [x(2),x(1),x(0)],.... """
+    num_terms_list = [ L[-i:] for i in range(1,len(rev_list))]
     #print num_terms_list
     for nterms in num_terms_list:
         # calculate 1st~(t-1)-th terms corresponding exponential factor
