@@ -344,17 +344,16 @@ def ema(L, alpha=None):
                EMA(t) is prediction value at time t periods
     """
     ema_data = []
-
     if not alpha:
        alpha = 1/(len(L)+1.25) # defaults
     if (alpha<0) or (alpha>1):
        raise ValueError("0 < smoothing factor <= 1")
     alpha_bar = float(1-alpha)
-    rev_list = L[::-1] # reverse origin list
     
     """ generate [x(0)], [x(1),x(0)], [x(2),x(1),x(0)],.... """
-    num_terms_list = [ L[-i:] for i in range(1,len(rev_list)+1)]
+    num_terms_list = [sorted(L[:i],reverse=True) for i in range(1,len(L)+1)]
     #print num_terms_list
+    #return 
     for nterms in num_terms_list:
         # calculate 1st~(t-1)-th terms corresponding exponential factor
         pre_exp_factor = [float(alpha_bar**(i-1)) for i in range(1,len(nterms))]
