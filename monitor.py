@@ -363,6 +363,18 @@ def ema(L, alpha=None):
     return ema_data
 
 
+def mae(predictVal, actualVal):
+    if len(predictVal) != len(actualVal):
+        raise Exception('Error: number of elements not match!')
+    return sum(map(lambda t:float(t[0]-t[1]),zip(predictVal, actualVal)))/len(actualVal)
+
+
+def rmse(predictVal, actualVal):
+    if len(predictVal) != len(actualVal):
+        raise Exception('Error: number of elements not match!')
+    return sum(map(lambda t:float(t[0]-t[1])**2,zip(predictVal, actualVal)))/len(actualVal)
+
+
 
 if __name__ == "__main__":
     
